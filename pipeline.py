@@ -30,7 +30,7 @@ reponse = requests.get(KOBO_CSV_URL, auth=HTTPBasicAuth(KOBO_USERNAME, KOBO_PASS
 #1. Fetch data from kobotoolsbox
 if reponse.status_code == 200:
     # Read the CSV data into a pandas DataFrame
-    print("Data fetched successfully from KoboToolbox")
+    print(" ☑️Data fetched successfully from KoboToolbox")
     csv_data = io.StringIO (reponse.text)
     df = pd.read_csv(csv_data, sep=",", on_bad_lines="skip")
     # Display the first few rows of the DataFrame 
@@ -44,7 +44,7 @@ if reponse.status_code == 200:
     # df['Total applicatns']= df['Age'].sumcum()
 
     # Convert the data to proper types 
-    df["Date"]= pd.to_datetime(df["Date"], format="%Y-%m-%d", errors="coerce")
+    # df["date"]= pd.to_datetime(df["date"], format="%Y-%m-%d", errors="coerce")
     
     # Uploading the data to PostgreSQL database
     print("Uploading data to PostgreSQL database ....")
@@ -66,30 +66,58 @@ if reponse.status_code == 200:
     cur.execute(f"DROP TABLE IF EXISTS {SCHEMA_NAME}.{table_name};")
     cur.execute(f"""
         CREATE TABLE {SCHEMA_NAME}.{table_name} (
-        ID SERIAL PRIMARY KEY,
-        "start" TIMESTAMP,
-        "end" TIMESTAMP,        
-        "Date" TIMESTAMP,
-        Full_Name text,
-        Date_of_Birth text,
-        Gender text,
-        Phone_Number text,
-        Email_Address text,
-        District_of_Residence text,
-        Educational_Background text,
-        Year_of_Graduation INTEGER,
-        Program_of_Interest text,
-        University_Choices text,
-        Scholarships text,
-        Admission_Status text
+            ID SERIAL PRIMARY KEY,
+            "start" TIMESTAMP,
+            "end" TIMESTAMP,        
+            "date" TIMESTAMP,
+            Full_Name text,
+            Date_of_Birth text,
+            Gender text,
+            Phone_Number text,
+            Email_Address text,
+            District_of_Residence text,
+            Educational_Background text,
+            Year_of_Graduation INT,
+            Program_of_Interest text,
+            University_Choices text,
+            Scholarships text,
+            Admission_Status text
         );
     """) 
     # Insert the data into the table
     insert_query = f"""
-       INSERT INTO {SCHEMA_NAME}.{table_name} (
-       "start", "end", "Date", Full_Name, Date_of_Birth,
-       Gender, Phone_Number, Email_Address, District_of_Residence,
-       Educational_Background, Year_of_Graduation, Program_of_Interest,
-       University_Choices, Scholarships, Admission_Status)
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-    # Convert the DataFrame to a list of tuples
+        INSERT INTO {SCHEMA_NAME}.{table_name} (
+            "start", "end", date, Full_Name, Date_of_Birth, Gender, Phone_Number,
+            Email_Address, District_of_Residence, Educational_Background,
+            Year_of_Graduation, Program_of_Interest, University_Choices,
+            Scholarships, Admission_Status
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+    for _, row in df.iterrows():
+        cur.execute(insert_query, (
+            row.get("start"),
+            row.get("end"),
+            row.get("date"),
+            row.get("Full_Name"),
+            row.get("Date_of_Birth"),
+            row.get("Gender"),
+            row.get("Phone_Number", 0),
+            row.get("Email_Address"),
+            row.get("District_of_Residence"),
+            row.get("Educational_Background"),
+            row.get("Year_of_Graduation", 0),
+            row.get("Program_of_Interest"),
+            row.get("University_Choices"),
+            row.get("Scholarships"),
+            row.get("Admission_Status"),
+        ))
+    # Commit the changes and close the connection
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(" ☑️Data uploaded successfully to PostgreSQL database")
+else:
+    print(f"❌Failed to fetch data from KoboToolbox. Status code: {reponse.status_code}")
+    print(reponse.text)
+    # Handle the error as needed (e.g., log it, raise an exception, etc.)
