@@ -1,0 +1,33 @@
+# ignore the environm
+.env
+# ignore the node_modules folder
+node_modules
+# ignore the build folder
+build/
+# ignore the coverage folder
+coverage
+# ignore the .env file
+.env.local
+# ignore the .env.development.local file
+.env.development.local
+# ignore the .env.test.local file
+.env.test.local
+# ignore the .env.production.local file
+.env.production.local
+# ignore the .env.development file
+.env.development
+# ignore the .env.test file
+.env.test
+# ignore the .env.production file
+.env.production
+# ignore the .env.local file
+.env.local
+# ignore the .env file
+.env
+_pycach_/
+*.py[cod]
+*Spy.class
+dist/
+.DS_Store
+Thumbs.db
+*.log

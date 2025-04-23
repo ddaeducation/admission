@@ -3,14 +3,13 @@ import requests
 import io
 import psycopg2
 from requests.auth import HTTPBasicAuth
-from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Kobo credentials connect to the API
+# Kobo credentials
 KOBO_USERNAME = os.getenv("KOBO_USERNAME")
 KOBO_PASSWORD = os.getenv("KOBO_PASSWORD")
 KOBO_CSV_URL = "https://kf.kobotoolbox.org/api/v2/assets/aekRSLCFjSiCMZoish7Sp9/export-settings/es8qxEyD2PDNYgLzcSkqauC/data.csv"
@@ -23,101 +22,94 @@ PG_USER = os.getenv("PG_USER")
 PG_PASSWORD = os.getenv("PG_PASSWORD")
 
 # Schema and table details
-SCHEMA_NAME = "Education"
-table_name = "Admission"  # it is good practice to avoid special characters
-reponse = requests.get(KOBO_CSV_URL, auth=HTTPBasicAuth(KOBO_USERNAME, KOBO_PASSWORD))
+SCHEMA_NAME = "university"
+TABLE_NAME = "admission"
 
-#1. Fetch data from kobotoolsbox
-if reponse.status_code == 200:
-    # Read the CSV data into a pandas DataFrame
-    print(" ☑️Data fetched successfully from KoboToolbox")
-    csv_data = io.StringIO (reponse.text)
-    df = pd.read_csv(csv_data, sep=",", on_bad_lines="skip")
-    # Display the first few rows of the DataFrame 
-    df.head()
+# 1. Fetch data from KoboToolbox
+response = requests.get(KOBO_CSV_URL, auth=HTTPBasicAuth(KOBO_USERNAME, KOBO_PASSWORD))
 
-    # Cleaning the DataFrame from any unwanted characters
-    print("Processing data ....")
-    df.columns = df.columns.str.replace(" ", "_").str.replace("-", "_").str.replace("(", "")
+if response.status_code == 200:
+    print("☑️ Data fetched successfully from KoboToolbox")
 
-    # Compute the number of applications 
-    # df['Total applicatns']= df['Age'].sumcum()
+    csv_data = io.StringIO(response.text)
+    df = pd.read_csv(csv_data, sep=";",on_bad_lines="skip")  # <-- Removed `sep=','`
 
-    # Convert the data to proper types 
-    # df["date"]= pd.to_datetime(df["date"], format="%Y-%m-%d", errors="coerce")
-    
-    # Uploading the data to PostgreSQL database
+    print("First few rows of the DataFrame:")
+    # Drop columns if they exist
+    df.drop(columns=["Phone_Number", "Year_of_Graduation","Date"], inplace=True, errors='ignore')
+    df.dropna(inplace=True, how='all')  # Drop rows where all elements are NaN
+    # Clean and standardize column names
+    df.columns = (
+        df.columns.str.replace(r"[ \-().,\'\":;?!]", "_", regex=True)
+                  .str.strip("_")
+                  .str.lower()
+    )
+
+    print("🧾 Cleaned column names:", df.columns.tolist())
+
+    # Uploading the data to PostgreSQL
     print("Uploading data to PostgreSQL database ....")
-    # Create a connection to the PostgreSQL database
-
     conn = psycopg2.connect(
         host=PG_HOST,
         port=PG_PORT,
         database=PG_DATABASE,
         user=PG_USER,
         password=PG_PASSWORD
-    )   
+    )
 
     cur = conn.cursor()
-    # Create the schema if it doesn't exist
     cur.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA_NAME};")
+    cur.execute(f"DROP TABLE IF EXISTS {SCHEMA_NAME}.{TABLE_NAME};")
 
-    # Drop and create the table if it exists
-    cur.execute(f"DROP TABLE IF EXISTS {SCHEMA_NAME}.{table_name};")
     cur.execute(f"""
-        CREATE TABLE {SCHEMA_NAME}.{table_name} (
-            ID SERIAL PRIMARY KEY,
+        CREATE TABLE {SCHEMA_NAME}.{TABLE_NAME} (
+            id SERIAL PRIMARY KEY,
             "start" TIMESTAMP,
             "end" TIMESTAMP,        
-            "date" TIMESTAMP,
-            Full_Name text,
-            Date_of_Birth text,
-            Gender text,
-            Phone_Number text,
-            Email_Address text,
-            District_of_Residence text,
-            Educational_Background text,
-            Year_of_Graduation INT,
-            Program_of_Interest text,
-            University_Choices text,
-            Scholarships text,
-            Admission_Status text
+            full_name TEXT,
+            date_of_birth TEXT,
+            gender TEXT,
+            email_address TEXT,
+            district_of_residence TEXT,
+            educational_background TEXT,
+            program_of_interest TEXT,
+            university_choices TEXT,
+            scholarships TEXT,
+            admission_status TEXT
         );
-    """) 
-    # Insert the data into the table
-    insert_query = f"""
-        INSERT INTO {SCHEMA_NAME}.{table_name} (
-            "start", "end", date, Full_Name, Date_of_Birth, Gender, Phone_Number,
-            Email_Address, District_of_Residence, Educational_Background,
-            Year_of_Graduation, Program_of_Interest, University_Choices,
-            Scholarships, Admission_Status
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
+    """)
 
+    insert_query = f"""
+        INSERT INTO {SCHEMA_NAME}.{TABLE_NAME} (
+            "start", "end", full_name, date_of_birth, gender,
+            email_address, district_of_residence, educational_background, 
+            program_of_interest, university_choices, scholarships, admission_status
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    # Filter out rows with missing values in the required columns
+    df.dropna(subset=["gender", "district_of_residence"], inplace=True)
     for _, row in df.iterrows():
         cur.execute(insert_query, (
             row.get("start"),
             row.get("end"),
-            row.get("date"),
-            row.get("Full_Name"),
-            row.get("Date_of_Birth"),
-            row.get("Gender"),
-            row.get("Phone_Number", 0),
-            row.get("Email_Address"),
-            row.get("District_of_Residence"),
-            row.get("Educational_Background"),
-            row.get("Year_of_Graduation", 0),
-            row.get("Program_of_Interest"),
-            row.get("University_Choices"),
-            row.get("Scholarships"),
-            row.get("Admission_Status"),
+            row.get("full_name"),
+            row.get("date_of_birth"),
+            row.get("gender"),
+            row.get("email_address"),
+            row.get("district_of_residence"),
+            row.get("educational_background"),
+            row.get("program_of_interest"),
+            row.get("university_choices"),
+            row.get("scholarships"),
+            row.get("admission_status")
         ))
-    # Commit the changes and close the connection
+
     conn.commit()
     cur.close()
     conn.close()
-    print(" ☑️Data uploaded successfully to PostgreSQL database")
+    print("☑️ Data uploaded successfully to PostgreSQL database")
+    print("☑️ Data processing completed successfully")
+
 else:
-    print(f"❌Failed to fetch data from KoboToolbox. Status code: {reponse.status_code}")
-    print(reponse.text)
-    # Handle the error as needed (e.g., log it, raise an exception, etc.)
+    print(f"❌ Failed to fetch data from KoboToolbox. Status code: {response.status_code}")
+    print(response.text)
